@@ -1,0 +1,1 @@
+@ECHO OFF && setlocal ENABLEDELAYEDEXPANSION && for %%f in (*.c) do (set list=%%f !list!) && echo !list!

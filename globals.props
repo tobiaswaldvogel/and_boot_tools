@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <ANDROID_NDK>C:\Android\android-ndk-r11c</ANDROID_NDK>
+    <ARM_TOOLCHAIN>$(ANDROID_NDK)\toolchains\arm-linux-androideabi-4.9\prebuilt\windows-x86_64\bin\arm-linux-androideabi-</ARM_TOOLCHAIN>
+    <ARM_SYSROOT>$(ANDROID_NDK)\platforms\android-21\arch-arm</ARM_SYSROOT>
+    <ARM_COMPILE_LIB>del 2&gt;nul $(OutputPath)$(TargetName).a &amp;&amp; set obj= &amp;&amp; (for %%f in (*.c) do echo ARM CC %%f &amp;&amp; $(ARM_TOOLCHAIN)gcc -c %%f -o $(IntermediateOutputPath)/%%~nf.o -ffunction-sections -fdata-sections -Wall -Wno-unused-function -Wl,--gc-sections  --sysroot=$(ARM_SYSROOT) !cflags! &amp;&amp; set obj=$(IntermediateOutputPath)/%%~nf.o !obj!) &amp;&amp; echo ARM AR $(OutputPath)$(TargetName).a &amp;&amp; $(ARM_TOOLCHAIN)ar rcs $(OutputPath)$(TargetName).a !obj!</ARM_COMPILE_LIB>
+    <ARM_COMPILE>echo ARM compile &amp;&amp; set list= &amp;&amp; (for %%f in (*.c) do set list=%%f !list!) &amp;&amp; $(ARM_TOOLCHAIN)gcc -o $(OutputPath)$(TargetName) !list! !cflags! -static !libs! -ffunction-sections -fdata-sections -Wall -Wno-unused-function -Wl,--gc-sections  --sysroot=$(ARM_SYSROOT) &amp;&amp; $(ARM_TOOLCHAIN)strip $(OutputPath)$(TargetName)</ARM_COMPILE>
+    <X86_TOOLCHAIN>$(ANDROID_NDK)\toolchains\x86-4.9\prebuilt\windows-x86_64\bin\i686-linux-android-</X86_TOOLCHAIN>
+    <X86_SYSROOT>$(ANDROID_NDK)\platforms\android-21\arch-x86</X86_SYSROOT>
+  </PropertyGroup>
+  <PropertyGroup>
+    <_PropertySheetDisplayName>Globals</_PropertySheetDisplayName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="ANDROID_NDK">
+      <Value>$(ANDROID_NDK)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ARM_TOOLCHAIN">
+      <Value>$(ARM_TOOLCHAIN)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ARM_SYSROOT">
+      <Value>$(ARM_SYSROOT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ARM_COMPILE_LIB">
+      <Value>$(ARM_COMPILE_LIB)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ARM_COMPILE">
+      <Value>$(ARM_COMPILE)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="X86_TOOLCHAIN">
+      <Value>$(X86_TOOLCHAIN)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="X86_SYSROOT">
+      <Value>$(X86_SYSROOT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+  </ItemGroup>
+</Project>

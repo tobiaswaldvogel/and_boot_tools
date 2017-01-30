@@ -1,0 +1,29 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bootimg", "bootimg\bootimg.vcxproj", "{CFC7291F-35F6-4D5D-9081-1030AEA431F1}"
+	ProjectSection(ProjectDependencies) = postProject
+		{8152747C-8506-4F63-883A-6B8F1F237ECC} = {8152747C-8506-4F63-883A-6B8F1F237ECC}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libsepol", "libsepol\libsepol.vcxproj", "{8152747C-8506-4F63-883A-6B8F1F237ECC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CFC7291F-35F6-4D5D-9081-1030AEA431F1}.Debug|Win32.ActiveCfg = Debug|Win32
+		{CFC7291F-35F6-4D5D-9081-1030AEA431F1}.Debug|Win32.Build.0 = Debug|Win32
+		{CFC7291F-35F6-4D5D-9081-1030AEA431F1}.Release|Win32.ActiveCfg = Release|Win32
+		{CFC7291F-35F6-4D5D-9081-1030AEA431F1}.Release|Win32.Build.0 = Release|Win32
+		{8152747C-8506-4F63-883A-6B8F1F237ECC}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8152747C-8506-4F63-883A-6B8F1F237ECC}.Debug|Win32.Build.0 = Debug|Win32
+		{8152747C-8506-4F63-883A-6B8F1F237ECC}.Release|Win32.ActiveCfg = Release|Win32
+		{8152747C-8506-4F63-883A-6B8F1F237ECC}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,180 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="assertion.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="avrule_block.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="avtab.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="boolean_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="booleans.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="conditional.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="constraint.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="context.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="context_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="debug.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ebitmap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="expand.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="genbools.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="genusers.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="handle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hashtab.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hierarchy.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="iface_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="interfaces.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="link.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mls.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="module.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="node_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="nodes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="polcaps.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="policydb.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="policydb_convert.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="policydb_public.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="port_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ports.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="roles.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="services.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sidtab.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="symtab.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="user_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="users.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="util.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="write.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="av_permissions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="boolean_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="context.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="context_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="debug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dso.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="handle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="iface_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mls.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="module_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="node_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="policydb_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="port_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="private.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="user_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

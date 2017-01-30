@@ -3,3 +3,11 @@
 ################################################################################
 
 /bootimg/Debug
+/bootimg/Release
+/Debug
+/libsepol/Debug
+/libsepol/Release
+/Release
+/and_boot_tools.sdf
+/and_boot_tools.VC.db
+/.vs/and_boot_tools/v14
