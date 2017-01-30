@@ -1333,8 +1333,8 @@ static int ocontext_write_xen(struct policydb_compat_info *info, policydb_t *p,
 						return POLICYDB_ERROR;
 					}
 
-					buf[0] = c->u.iomem.low_iomem;
-					buf[1] = c->u.iomem.high_iomem;
+					buf[0] = (uint32_t)c->u.iomem.low_iomem;
+					buf[1] = (uint32_t)c->u.iomem.high_iomem;
 					for (j = 0; j < 2; j++)
 						buf[j] = cpu_to_le32(buf[j]);
 					items = put_entry(buf, sizeof(uint32_t), 2, fp);

@@ -266,7 +266,7 @@ size_t fs_config_generate(char *buffer, size_t length, const struct fs_path_conf
         return -ENOSPC;
 
 	memset(p, 0, len);
-    host_len = len;
+    host_len = (uint16_t)len;
     p->len = get2LE((const uint8_t *)&host_len);
     p->mode = get2LE((const uint8_t *)&(pc->mode));
     p->uid = get2LE((const uint8_t *)&(pc->uid));

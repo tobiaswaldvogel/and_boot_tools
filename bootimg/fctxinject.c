@@ -20,6 +20,17 @@ void fctxinject_die(int quiet, int rc, const char *why, ...)
 	exit(rc);
 }
 
+void fctxinject_info(int verbose, const char *info, ...)
+{
+	if (verbose) {
+		va_list ap;
+		va_start(ap, info);
+		vprintf(info, ap);
+		printf("\n");
+		va_end(ap);
+	}
+}
+
 int fctxinject_usage() {
 	fprintf(stderr, "Usage: fctxinject -i input file -o output file -p path -d context [ -d (dump) ] [ -q (quiet) ]\n\n");
 	return 200;
@@ -49,7 +60,7 @@ void fctx_write_le4(uint8_t *b, size_t *pos, uint32_t val)
 
 int main_fctxinject(int argc, char** argv)
 {
-	int			quiet = 0;
+	int			quiet = 0, verbose = 0;
 	char		*ctx_file = 0, *out_file = 0, *new_ctx = 0, *new_path = 0;
 	FILE		*f;
 	size_t		pos, tpos, rpos, rlen, len, regex_new_len, slen, num_stem, num_regex, i;
@@ -58,9 +69,7 @@ int main_fctxinject(int argc, char** argv)
 	size_t		regex_start, regex_new_start = 0;
 	uint32_t	pcrereglen, pcrestudylen;
 
-
 	uint8_t	t[256], *b = 0;
-	int		dump = 0;
 
 	argc--;
 	argv++;
@@ -71,8 +80,8 @@ int main_fctxinject(int argc, char** argv)
 			quiet = 1;
 			argc -= 1;
 			argv += 1;
-		} else if (!strcmp(arg, "-d")) {
-				dump = 1;
+		} else if (!strcmp(arg, "-v")) {
+				verbose = 1;
 				argc -= 1;
 				argv += 1;
 		} else if (argc >= 2) {
@@ -115,32 +124,26 @@ int main_fctxinject(int argc, char** argv)
 		fctxinject_die(quiet, 1, "Could not find SELINUX_MAGIC_COMPILED_FCONTEXT in %s\n", ctx_file);
 
 	pos = 4;
-	if (dump)
-		printf("File version %d\n", fctx_read_le4(b , &pos));
+	fctxinject_info(verbose, "File version %d", fctx_read_le4(b , &pos));
 
 	slen = fctx_read_le4(b , &pos);
-
 	memset(t, 0, sizeof(t));
 	memcpy(t, b + pos, slen);
-	if (dump)
-		printf("PCRE version %s\n", t);
+	fctxinject_info(verbose, "PCRE version %s", t);
 	pos += slen;
 
 	num_stem = fctx_read_le4(b , &pos);
-	if (dump)
-		printf("stems %d\n", num_stem);
+	fctxinject_info(verbose, "stems %d", num_stem);
 
 	for (i = 0; i < num_stem; i++) {
 		slen = fctx_read_le4(b , &pos);
-		if (dump)
-			printf("stem %d: %s\n", i, b + pos);
+		fctxinject_info(verbose, "stem %d: %s", i, b + pos);
 		pos += slen + 1;
 	}
 
 	pos_num_regex = pos;
 	num_regex = fctx_read_le4(b , &pos);
-	if (dump)
-		printf("regex %d\n", num_regex);
+	fctxinject_info(verbose, "regex %d", num_regex);
 
 	for (i = 0; i < num_regex; i++) {
 		regex_start = pos;
@@ -167,8 +170,7 @@ int main_fctxinject(int argc, char** argv)
 		pcrestudylen = fctx_read_le4(b, &pos);
 		pos += pcrestudylen;
 
-		if (dump)
-			printf("%s\t%s\n", regex, ctx);
+		fctxinject_info(verbose, "%s\t%s", regex, ctx);
 	}
 
 	if (len != pos)
