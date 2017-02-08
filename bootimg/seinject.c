@@ -13,7 +13,12 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sepol/policydb/policydb.h>
+#include <sepol/policydb/expand.h>
+#include <sepol/policydb/link.h>
 #include <sepol/policydb/services.h>
+#include <sepol/policydb/avrule_block.h>
+#include <sepol/policydb/conditional.h>
+#include <sepol/policydb/constraint.h>
 
 #ifdef WIN32
 #define strtok_r strtok_s
@@ -52,6 +57,271 @@ void seinject_die(int rc, const char *why, ...)
 	exit(rc);
 }
 
+void seinject_spec_to_string(uint16_t spec, char *buffer, size_t buflen)
+{
+	size_t			bufpos = 0;
+
+	*buffer = 0;
+
+	if (spec & AVTAB_ALLOWED)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " ALLOW");
+	if (spec & AVTAB_AUDITALLOW)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " AUDITALLOW");
+	if (spec & AVTAB_AUDITDENY)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " AUDITDENY");
+	if (spec & AVTAB_NEVERALLOW)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " ANEVERALLOW");
+	if (spec & AVTAB_TRANSITION)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " TRANSITION");
+	if (spec & AVTAB_MEMBER)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " MEMBER");
+	if (spec & AVTAB_CHANGE)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " CHANGE");
+	if (spec & AVTAB_XPERMS_ALLOWED)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " XPERMS_ALLOWED");
+	if (spec & AVTAB_XPERMS_AUDITALLOW)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " XPERMS_AUDITALLOW");
+	if (spec & AVTAB_XPERMS_DONTAUDIT)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " XPERMS_DONTAUDIT");
+	if (spec & AVTAB_XPERMS_NEVERALLOW)
+		bufpos += snprintf(buffer + bufpos, buflen - bufpos, " XPERMS_NEVERALLOW");
+}
+
+size_t seinject_perm_to_string(char *buffer, size_t buflen, uint32_t value, class_datum_t *cls)
+{
+	size_t			bufpos = 0;
+	hashtab_t		p;
+	hashtab_ptr_t	*ptab, pcur;
+	int				i, first = 1;
+
+	*buffer = 0;
+
+	for (i = 0; i < 2; i++) {
+		p = i ? cls->permissions.table : (cls->comdatum ? cls->comdatum->permissions.table : 0);
+		if (!p)
+			continue;
+
+		for (ptab = p->htable; ptab < p->htable + p->size; ptab++)
+			for (pcur = *ptab; pcur; pcur = pcur->next)
+				if (value & (1U << (((perm_datum_t*)(pcur->datum))->s.value - 1))) {
+					bufpos += snprintf(buffer + bufpos, buflen - bufpos, first ? "%s" : ",%s", pcur->key);
+					first = 0;
+				}
+	}
+
+	return bufpos;
+}
+
+void seinject_type_map_to_string(type_datum_t *td, char *buffer, size_t buflen)
+{
+}
+
+size_t seinject_dump_type_bm(char* buffer, size_t buflen, policydb_t *policy, ebitmap_t *bm)
+{
+	unsigned int	type_val;
+	ebitmap_node_t	*node;
+	int				first = 1;
+	size_t			bufpos = 0;
+
+	ebitmap_for_each_bit(bm, node, type_val) {
+		if (ebitmap_node_get_bit(node, type_val)) {
+			bufpos += snprintf(buffer + bufpos, buflen - bufpos, first ? "%s" : ",%s", policy->p_type_val_to_name[type_val]);
+			first = 0;
+		}
+	}
+
+	return bufpos;
+}
+
+size_t seinject_dump_expression(char* buffer, size_t buflen, policydb_t *policy, constraint_expr_t *exp)
+{
+	static const char *SE_CEXPR[] = { "", "==", "!=", "dom", "domby", "incomp" };
+	uint32_t a = exp->attr;
+	size_t	bufpos = 0;
+
+	if (exp->expr_type >= CEXPR_NOT && exp->expr_type <= CEXPR_OR)
+		return snprintf(buffer, buflen, " %s",
+		exp->expr_type == CEXPR_NOT ? "!" :
+		exp->expr_type == CEXPR_AND ? "&" : "|");
+
+
+	if (exp->expr_type == CEXPR_ATTR) {
+		if (a >= CEXPR_L1L2)
+			return snprintf(buffer, buflen, " %s %s %s",
+				a == CEXPR_L1L2 || a == CEXPR_L1H2 || a == CEXPR_L1H1 ? "l1" :
+				a == CEXPR_H1L2 || a == CEXPR_H1H2 ? "h1" :
+				a == CEXPR_L2H2 ? "l2" : "",
+				SE_CEXPR[exp->op],
+				a == CEXPR_L1L2 || a == CEXPR_H1L2 ? "l2" :
+				a == CEXPR_L1H2 || a == CEXPR_H1H2 || a == CEXPR_L2H2 ? "h2" :
+				a == CEXPR_L1H1 ? "h1" : "");
+	}
+
+	if (exp->expr_type == CEXPR_NAMES) {
+		bufpos = snprintf(buffer, buflen, " %s%s %s ",
+			(a & CEXPR_USER) ? "u" :
+			(a & CEXPR_ROLE) ? "r" :
+			(a & CEXPR_TYPE) ? "t" : "?",
+			(a & CEXPR_TARGET) ? "2" : "1",
+			SE_CEXPR[exp->op]);
+
+		if (a & CEXPR_TYPE)
+			bufpos += seinject_dump_type_bm(buffer + bufpos, buflen - bufpos, policy, &exp->type_names->types);
+		else
+			snprintf(buffer + bufpos, buflen - bufpos, "??");
+	}
+
+	return bufpos;
+}
+
+int seinject_dump_types(policydb_t *policy, char *filter)
+{
+	avtab_t			*t;
+	avtab_ptr_t		*avtab;
+	char			spec[1024];
+	char			buffer[1024];
+	int				bufpos;
+	unsigned int	i;
+	uint32_t		filter_type;
+
+	if (filter) {
+		type_datum_t *t = (type_datum_t*)hashtab_search(policy->p_types.table, filter);
+		if (!t)
+			seinject_die(2, "Filter type %s does not exist", filter);
+		filter_type = t->s.value;
+	}
+
+	for (i = 0; i < policy->p_types.nprim; i++) {
+		type_datum_t	*td = policy->type_val_to_struct[i];
+
+		unsigned int	type_val;
+		ebitmap_node_t	*node;
+		int				skip = filter ? 1 : 0, first = 1;
+
+		if (filter && i + 1 == filter_type)
+			skip = 0;
+
+		bufpos = 0;
+		bufpos += snprintf(buffer, sizeof(buffer), "[%s] %s (%s) {",
+			td->flavor == 0 ? "TYPE" : td->flavor == 1 ? "ATTRIB" : "ALIAS",
+			policy->p_type_val_to_name[i],
+			(td->flags & 0x01) == 0 ? "ENFORCING" : "PERMISSIVE");
+
+		ebitmap_for_each_bit(policy->type_attr_map + i, node, type_val) {
+			if (ebitmap_node_get_bit(node, type_val)) {
+				if (filter && type_val + 1 == filter_type)
+					skip = 0;
+
+				bufpos += snprintf(buffer + bufpos, sizeof(buffer) - bufpos, first ? "%s" : ",%s", policy->p_type_val_to_name[type_val]);
+				first = 0;
+			}
+		}
+
+		if (!skip)
+			printf("%s}\n", buffer);
+	}
+
+	t = &policy->te_avtab;
+	for (avtab = t->htable; avtab < t->htable + t->nslot; avtab++) {
+		avtab_ptr_t	cur;
+
+		for (cur = *avtab; cur; cur = cur->next) {
+			avtab_key_t		*key = &cur->key;
+
+			if (filter && key->source_type != filter_type && key->target_type != filter_type &&
+				(0 == (AVTAB_TRANSITION & key->specified) || cur->datum.data != filter_type))
+				continue;
+
+			seinject_spec_to_string(key->specified, spec, sizeof(spec));
+
+			bufpos = snprintf(buffer, sizeof(buffer), "[AV] %s %s -> %s (%s) {", spec + 1,
+				policy->p_type_val_to_name[key->source_type - 1],
+				policy->p_type_val_to_name[key->target_type - 1],
+				policy->p_class_val_to_name[key->target_class - 1]);
+
+			if (0 == (AVTAB_TRANSITION & key->specified))
+				bufpos += seinject_perm_to_string(buffer + bufpos, sizeof(buffer) - bufpos, cur->datum.data, policy->class_val_to_struct[key->target_class - 1]);
+			else
+				bufpos += snprintf(buffer + bufpos, sizeof(buffer) - bufpos, "%s", policy->p_type_val_to_name[cur->datum.data - 1]);
+
+			bufpos += snprintf(buffer + bufpos, sizeof(buffer) - bufpos, "}\n");
+			printf(buffer);
+		}
+	}
+
+	return 0;
+}
+
+
+int seinject_dump_classes(policydb_t *policy, char *filter)
+{
+	char			buffer[1024];
+	int				cat_min, cat_max;
+
+	unsigned int	i;
+
+	uint32_t		filter_class;
+	int				bufpos;
+
+	if (filter) {
+		class_datum_t *t = (class_datum_t*)hashtab_search(policy->p_classes.table, filter);
+		if (!t)
+			seinject_die(2, "Filter class %s does not exist", filter);
+		filter_class = t->s.value;
+	}
+
+	for (i = 0; i < policy->p_levels.nprim; i++)
+		printf("[LEVEL] %s\n", policy->p_sens_val_to_name[i]);
+
+	
+	for (cat_min = 65535, cat_max = 0, i = 0; i < policy->p_cats.nprim; i++) {
+		char	*name = policy->p_cat_val_to_name[i];
+		int		cat;
+
+		if ((name)[0] != 'c') {
+			printf("[CAT] %s\n", name);
+			continue;
+		}
+		cat = atoi((name) + 1);
+		if (cat_min > cat)
+			cat_min = cat;
+		if (cat_max < cat)
+			cat_max = cat;
+	}
+	printf("[CATS] c%d.c%d\n", cat_min, cat_max);
+
+	for (i = (filter ? filter_class : 0); i < (filter ? filter_class + 1 : policy->p_classes.nprim); i++)
+		printf("[CLASS] %s\n", policy->p_class_val_to_name[i]);
+
+
+	for (i = (filter ? filter_class : 0); i < (filter ? filter_class + 1 : policy->p_classes.nprim); i++) {
+		constraint_node_t	*ccur;
+		constraint_expr_t	*ecur;
+		class_datum_t		*cd = policy->class_val_to_struct[i];
+
+		for (ccur = cd->constraints; ccur; ccur = ccur->next) {
+			bufpos = 0;
+			bufpos = snprintf(buffer, sizeof(buffer), "[CONSTRAINT] %s {", policy->p_class_val_to_name[i]);
+			bufpos += seinject_perm_to_string(buffer + bufpos, sizeof(buffer) - bufpos, ccur->permissions, cd);
+			bufpos += snprintf(buffer + bufpos, sizeof(buffer) - bufpos, "} ");
+
+			for (ecur = ccur->expr; ecur; ecur = ecur->next) {
+				if (ecur->next && ecur->next->expr_type >= CEXPR_NOT && ecur->next->expr_type <= CEXPR_OR) {
+					bufpos += seinject_dump_expression(buffer + bufpos, sizeof(buffer) - bufpos, policy, ecur->next);
+					bufpos += seinject_dump_expression(buffer + bufpos, sizeof(buffer) - bufpos, policy, ecur);
+					ecur = ecur->next;
+					continue;
+				}
+
+				bufpos += seinject_dump_expression(buffer + bufpos, sizeof(buffer) - bufpos, policy, ecur);
+			}
+			printf("%s\n", buffer);
+		}
+	}
+
+	return 0;
+}
+
 void *cmalloc(size_t s) {
 	void *t = malloc(s);
 	if (t == NULL)
@@ -59,7 +329,63 @@ void *cmalloc(size_t s) {
 	return t;
 }
 
-int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
+int policydb_index_decls(sepol_handle_t * handle, policydb_t * p);
+
+int add_type(policydb_t *policy, char *type, type_datum_t** td_ret)
+{
+	type_datum_t	*td;
+	uint32_t		value = 0;
+	char*			name;
+	unsigned int	i;
+
+	td = (type_datum_t *)cmalloc(sizeof(type_datum_t));
+	type_datum_init(td);
+	td->primary = 1;
+	td->flavor = TYPE_TYPE;
+
+	name = strdup(type);
+	if (!name)
+		return seinject_msg(1, "Could allocate memor for new type", type);
+
+	if (SEPOL_OK != symtab_insert(policy, SYM_TYPES, name, td, SCOPE_DECL, 1, &value))
+		seinject_die(2, "Failed to insert type into symtab\n");
+
+	td->s.value = value;
+
+	if (ebitmap_set_bit(&policy->global->branch_list->declared.scope[SYM_TYPES], value - 1, 1)) {
+		exit(1);
+	}
+
+	policy->type_attr_map = realloc(policy->type_attr_map, sizeof(ebitmap_t)*policy->p_types.nprim);
+	policy->attr_type_map = realloc(policy->attr_type_map, sizeof(ebitmap_t)*policy->p_types.nprim);
+	ebitmap_init(&policy->type_attr_map[value - 1]);
+	ebitmap_init(&policy->attr_type_map[value - 1]);
+	ebitmap_set_bit(&policy->type_attr_map[value - 1], value - 1, 1);
+
+
+	for (i = 0; i<policy->p_roles.nprim; ++i) {
+		//Not sure all those three calls are needed
+		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.negset, value - 1, 0);
+		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.types, value - 1, 1);
+		type_set_expand(&policy->role_val_to_struct[i]->types, &policy->role_val_to_struct[i]->cache, policy, 0);
+	}
+
+	if (policydb_index_decls(0, policy))
+		seinject_die(2, "Failed to index decls\n");
+
+	if (policydb_index_classes(policy))
+		seinject_die(2, "Failed to index classes\n");
+	
+	if (policydb_index_others(NULL, policy, 1))
+		seinject_die(2, "Failed to index others\n");
+
+
+
+	*td_ret = td;
+	return 0;
+}
+
+int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 	type_datum_t *src, *tgt;
 	class_datum_t *cls;
 	perm_datum_t *perm;
@@ -110,7 +436,7 @@ int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
 	return 0;
 }
 
-int add_genfs(char *fs, char *p, char *c, policydb_t *policy) {
+int add_genfs(policydb_t *policy, char *fs, char *p, char *c) {
 	type_datum_t		*tgt;
 	genfs_t				*genfs;
 	ocontext_t			*octx;
@@ -159,6 +485,97 @@ int add_genfs(char *fs, char *p, char *c, policydb_t *policy) {
 	ctx->type = tgt->s.value;
 	ctx->range.level[0].sens = 1;
 	ctx->range.level[1].sens = 1;
+	return 0;
+}
+
+int add_transition(policydb_t *policy, char *srcS, char *origS, char *tgtS, char *c)
+{
+	type_datum_t *src, *tgt, *orig;
+	class_datum_t *cls;
+
+	avtab_datum_t *av;
+	avtab_key_t key;
+
+	src = hashtab_search(policy->p_types.table, srcS);
+	if (src == NULL)
+		return seinject_msg(1, "source type %s does not exist\n", srcS);
+
+	tgt = hashtab_search(policy->p_types.table, tgtS);
+	if (tgt == NULL)
+		return seinject_msg(1, "target type %s does not exist\n", tgtS);
+
+	cls = hashtab_search(policy->p_classes.table, c);
+	if (cls == NULL)
+		return seinject_msg(1, "class %s does not exist\n", c);
+
+	orig = hashtab_search(policy->p_types.table, origS);
+	if (cls == NULL)
+		return seinject_msg(1, "class %s does not exist\n", origS);
+
+	key.source_type = src->s.value;
+	key.target_type = orig->s.value;
+	key.target_class = cls->s.value;
+	key.specified = AVTAB_TRANSITION;
+	av = avtab_search(&policy->te_avtab, &key);
+
+	if (av)
+		return seinject_msg(1, "Warning, rule already defined! Won't override.\n"
+								"Previous value = %d, wanted value = %d\n", av->data, tgt->s.value);
+
+	av = cmalloc(sizeof(*av));
+	av->data = tgt->s.value;
+	int ret = avtab_insert(&policy->te_avtab, &key, av);
+	if (ret)
+		return seinject_msg(1, "Error inserting into avtab\n");
+
+	return 0;
+}
+
+int add_attr(policydb_t *policy, char *type, char *attr) {
+	type_datum_t		*td, *ad;
+	unsigned int		i;
+
+	td = hashtab_search(policy->p_types.table, type);
+	if (!td)
+		return seinject_msg(1, "type %s does not exist\n", type);
+
+	ad = hashtab_search(policy->p_types.table, attr);
+	if (!ad)
+		return seinject_msg(1, "attribute %s does not exist\n", attr);
+
+	if (ad->flavor != TYPE_ATTRIB)
+		return seinject_msg(1, "%s is not an attribute", type);
+
+	if (ebitmap_set_bit(policy->type_attr_map + td->s.value - 1, ad->s.value - 1, 1))
+		return seinject_msg(1, "error setting attibute %s for type: %s", attr, type);
+
+	if (ebitmap_set_bit(policy->attr_type_map + ad->s.value - 1, td->s.value - 1, 1))
+		return seinject_msg(1, "error setting attibute %s for type: %s", attr, type);
+
+	/* Update constraints */
+	for (i = 0; i < policy->p_classes.nprim; i++) {
+		constraint_node_t	*n;
+		constraint_expr_t	*e;
+		class_datum_t		*cl = policy->class_val_to_struct[i];
+
+		for (n = cl->constraints; n; n = n->next)
+			for (e = n->expr; e; e = e->next)
+				if (e->expr_type == CEXPR_NAMES)
+					if (ebitmap_get_bit(&e->type_names->types, ad->s.value - 1))
+						ebitmap_set_bit(&e->names, td->s.value - 1, 1);
+	}
+
+	return 0;
+}
+
+int remove_mls_contraints(policydb_t *policy, char *clazz) {
+	class_datum_t	*cd;
+
+	cd = hashtab_search(policy->p_classes.table, clazz);
+	if (!cd)
+		return seinject_msg(1, "class %s does not exist\n");
+
+	cd->constraints = 0;
 	return 0;
 }
 
@@ -234,19 +651,25 @@ int load_policy_into_kernel(policydb_t *policydb) {
 }
 
 int main_seinject(int argc, char **argv) {
-	char		*policy = NULL, *source = NULL, *target = NULL, *clazz = NULL, *perm = NULL;
-	char		*perm_token = NULL, *perm_saveptr = NULL, *outfile = NULL;
-	char		*permissive = NULL, *genfs = NULL;
+	char		*policy = NULL, *source = NULL, *target = NULL, *clazz = NULL, *perm = NULL, *fcon = 0;
+	char		*mls = 0, *perm_token = NULL, *perm_saveptr = NULL, *outfile = NULL;
+	char		*type = 0, *genfs = 0, *attr = 0;
 	policydb_t	policydb;
 	struct policy_file pf, outpf;
-	sidtab_t sidtab;
-	int ret_add_rule;
-	int load = 0;
+	sidtab_t	sidtab;
+	int			ret_add_rule;
+	int			load = 0, dump_types = 0, dump_classes = 0;
 	FILE *fp;
-	int i;
+	int i, permissive_value = 0;
 
 	for (i=1; i<argc; i++) {
 		if (argv[i][0] == '-') {
+
+			if (argv[i][1] == 'a') {
+				i++;
+				attr = argv[i];
+				continue;
+			}
 			if (argv[i][1] == 's') {
 				i++;
 				source = argv[i];
@@ -260,6 +683,12 @@ int main_seinject(int argc, char **argv) {
 			if (argv[i][1] == 'c') {
 				i++;
 				clazz = argv[i];
+				continue;
+			}
+
+			if (argv[i][1] == 'f') {
+				i++;
+				fcon = argv[i];
 				continue;
 			}
 			if (argv[i][1] == 'p') {
@@ -279,12 +708,24 @@ int main_seinject(int argc, char **argv) {
 			}
 			if (argv[i][1] == 'Z') {
 				i++;
-				permissive = argv[i];
+				type = argv[i];
+				permissive_value = 1;
+				continue;
+			}
+			if (argv[i][1] == 'z') {
+				i++;
+				type = argv[i];
+				permissive_value = 0;
 				continue;
 			}
 			if (argv[i][1] == 'g') {
 				i++;
 				genfs = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 'M') {
+				i++;
+				mls = argv[i];
 				continue;
 			}
 			if (argv[i][1] == 'l') {
@@ -295,14 +736,37 @@ int main_seinject(int argc, char **argv) {
 				seinject_quiet = 1;
 				continue;
 			}
+			if (argv[i][1] == 'd') {
+				if (argv[i][2] == 't') {
+					dump_types = 1;
+					continue;
+				}
+				else if (argv[i][2] == 'c') {
+					dump_classes = 1;
+					continue;
+				}
+			}
 			break;
 		}
 	}
 
-	if (i < argc || argc == 1 || ((!source || !target || !clazz || !perm) && !permissive && (!genfs || !target))) {
+	if (i < argc || argc == 1 || ((!source || !target || !clazz || !perm) && !attr && !fcon && !type && !mls && !dump_types && !dump_classes && (!genfs || !target))) {
 		fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
+		fprintf(stderr, "    Add AV rule\n\n");
 		fprintf(stderr, "%s -Z permissive_type [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
+		fprintf(stderr, "    Add permissive type\n\n");
+		fprintf(stderr, "%s -z <source type> -P <policy file> [-o <output file>]\n", argv[0]);
+		fprintf(stderr, "    Add enforcing type\n\n");
+		fprintf(stderr, "%s -s <source type> -a <type_attribute> -P <policy file> [-o <output file>]\n", argv[0]);
+		fprintf(stderr, "    Add attribute to type\n\n");
 		fprintf(stderr, "%s -g file system -t <target type> [-p path ] [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
+		fprintf(stderr, "    Add genfs entry\n\n");
+		fprintf(stderr, "%s -M class [-p path ] [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
+		fprintf(stderr, "    Remove contraints from class\n\n");
+		fprintf(stderr, "%s -dt [-t type] [-p path ] [-P <policy file>]\n", argv[0]);
+		fprintf(stderr, "    Dump types and AV rules, filtered by optional type\n\n");
+		fprintf(stderr, "%s -dc [-p path ] [-P <policy file>]\n", argv[0]);
+		fprintf(stderr, "    Dump classes and constraints\n\n");
 		exit(1);
 	}
 
@@ -318,21 +782,47 @@ int main_seinject(int argc, char **argv) {
 	if (policydb_load_isids(&policydb, &sidtab))
 		return 1;
 
-	if (permissive) {
-		type_datum_t *type;
-		type = hashtab_search(policydb.p_types.table, permissive);
-		if (type == NULL)
-			seinject_die(2, "type %s does not exist", permissive);
+	if (dump_types || dump_classes) {
+		if (dump_classes)
+			seinject_dump_classes(&policydb, clazz);
 
-		if (ebitmap_set_bit(&policydb.permissive_map, type->s.value, 1))
+		if (dump_types)
+			seinject_dump_types(&policydb, target);
+
+		return 0;
+	}
+
+	if (type) {
+		/* Set domain permissive / non-permissive */
+		type_datum_t *td = hashtab_search(policydb.p_types.table, type);
+
+		if (!td)
+			if (SEPOL_OK != add_type(&policydb, type, &td))
+				seinject_die(2, "Could not create type %s", type);
+
+		if (ebitmap_set_bit(&policydb.permissive_map, td->s.value, permissive_value))
 			seinject_die(1, "Could not set bit in permissive map");
+
 	} else if (genfs) {
-		if (add_genfs(genfs, perm, target, &policydb))
+		/* Add genfs entry */
+		if (add_genfs(&policydb,genfs, perm, target))
 			seinject_die(1, "Could not add genfs rule");
+
+	} else if (mls) {
+		remove_mls_contraints(&policydb, mls);
+
+	} else if (fcon) {
+		if (add_transition(&policydb, source, fcon, target, clazz))
+			seinject_die(1, "Could not add file transition rule");
+
+	} else if (attr) {
+		if (add_attr(&policydb, source, attr))
+			seinject_die(1, "Could not add attr to type");
+
 	} else {
 		perm_token = strtok_r(perm, ",", &perm_saveptr);
 		while (perm_token) {
-			ret_add_rule = add_rule(source, target, clazz, perm_token, &policydb);
+			ret_add_rule = add_rule(&policydb, source, target, clazz, perm_token);
 			if (ret_add_rule)
 				seinject_die(ret_add_rule, "Could not add rule for perm: %s", perm_token);
 
@@ -361,10 +851,6 @@ int main_seinject(int argc, char **argv) {
 	}
 
 	policydb_destroy(&policydb);
-
-	if (seinject_quiet == 0)
-		fprintf(stderr,"Success\n");
-
 	return 0;
 }
 

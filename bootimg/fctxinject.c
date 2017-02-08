@@ -32,7 +32,7 @@ void fctxinject_info(int verbose, const char *info, ...)
 }
 
 int fctxinject_usage() {
-	fprintf(stderr, "Usage: fctxinject -i input file -o output file -p path -d context [ -d (dump) ] [ -q (quiet) ]\n\n");
+	fprintf(stderr, "Usage: fctxinject -i input file -o output file -p path -w -d context [ -d (dump) ] [ -q (quiet) ]\n\n");
 	return 200;
 }
 
@@ -60,7 +60,7 @@ void fctx_write_le4(uint8_t *b, size_t *pos, uint32_t val)
 
 int main_fctxinject(int argc, char** argv)
 {
-	int			quiet = 0, verbose = 0;
+	int			quiet = 0, verbose = 0, wildcard = 0, stemid = -1, new_path_regex_start = 0;
 	char		*ctx_file = 0, *out_file = 0, *new_ctx = 0, *new_path = 0;
 	FILE		*f;
 	size_t		pos, tpos, rpos, rlen, len, regex_new_len, slen, num_stem, num_regex, i;
@@ -75,19 +75,22 @@ int main_fctxinject(int argc, char** argv)
 	argv++;
 
 	while (argc > 0) {
-		char *arg = argv[0];
-		if (!strcmp(arg, "-q")) {
+		char *arg = *argv;
+
+		argc -= 1;
+		argv += 1;
+
+		if (!strcmp(arg, "-q"))
 			quiet = 1;
-			argc -= 1;
-			argv += 1;
-		} else if (!strcmp(arg, "-v")) {
-				verbose = 1;
-				argc -= 1;
-				argv += 1;
-		} else if (argc >= 2) {
-			char *val = argv[1];
-			argc -= 2;
-			argv += 2;
+		else if (!strcmp(arg, "-v"))
+			verbose = 1;
+		else if (!strcmp(arg, "-w"))
+			wildcard = 1;
+		else if (argc >= 1) {
+			char *val = *argv;
+
+			argc--;
+			argv++;
 			if (!strcmp(arg, "-i"))
 				ctx_file = val;
 			else if (!strcmp(arg, "-o"))
@@ -96,7 +99,6 @@ int main_fctxinject(int argc, char** argv)
 				new_ctx = val;
 			else if (!strcmp(arg, "-p")) {
 				new_path = val;
-				regex_new_len = snprintf(regex_new, sizeof(regex_new), "%s(/.*)?", new_path);
 			}
 			else
 				return fctxinject_usage();
@@ -120,6 +122,9 @@ int main_fctxinject(int argc, char** argv)
 	fread(b, len, 1, f);
 	fclose(f);
 
+	if (new_path)
+			regex_new_len = snprintf(regex_new, sizeof(regex_new), wildcard ? "%s(/.*)?" : "%s", new_path);
+	
 	if (b[0] != 0x8a || b[1] !=0xff || b[2] != 0x7c || b[3] != 0xf9)
 		fctxinject_die(quiet, 1, "Could not find SELINUX_MAGIC_COMPILED_FCONTEXT in %s\n", ctx_file);
 
@@ -138,6 +143,10 @@ int main_fctxinject(int argc, char** argv)
 	for (i = 0; i < num_stem; i++) {
 		slen = fctx_read_le4(b , &pos);
 		fctxinject_info(verbose, "stem %d: %s", i, b + pos);
+		if (0 == strncmp((char*)b + pos, new_path, slen) && new_path[slen] == '/') {
+			stemid = i;
+			new_path_regex_start = slen;
+		}
 		pos += slen + 1;
 	}
 
@@ -169,7 +178,6 @@ int main_fctxinject(int argc, char** argv)
 		pos += pcrereglen;
 		pcrestudylen = fctx_read_le4(b, &pos);
 		pos += pcrestudylen;
-
 		fctxinject_info(verbose, "%s\t%s", regex, ctx);
 	}
 
@@ -183,12 +191,13 @@ int main_fctxinject(int argc, char** argv)
 		fctx_write_le4(t, &tpos, slen);
 		memcpy(t + tpos, new_ctx, slen);
 		tpos += slen;
-		fctx_write_le4(t, &tpos, regex_new_len);
-		memcpy(t + tpos, regex_new, regex_new_len);
-		tpos += regex_new_len;
+		slen = regex_new_len + 1;
+		fctx_write_le4(t, &tpos, slen);
+		memcpy(t + tpos, regex_new, slen);
+		tpos += slen;
 		fctx_write_le4(t, &tpos, 0);	// Mode
-		fctx_write_le4(t, &tpos, -1);	// Stem ID
-		fctx_write_le4(t, &tpos, 1);	// Has Meta
+		fctx_write_le4(t, &tpos, stemid);	// Stem ID
+		fctx_write_le4(t, &tpos, wildcard);	// Has Meta
 		slen = strlen(new_path);
 		fctx_write_le4(t, &tpos, slen);	// Prefix before meta
 		tpos += 4;
@@ -221,28 +230,22 @@ int main_fctxinject(int argc, char** argv)
 		rpos++;
 		t[rpos++] = 0x1b;
 
-		for (i = 0; i < slen; i++) {
+		for (i = new_path_regex_start; i < slen; i++) {
 			t[rpos++] = 0x1d;
 			t[rpos++] = new_path[i];
 		}
 
-		t[rpos++] = 0x92;
-		t[rpos++] = 0x85;
-		t[rpos++] = 0x00;
-		t[rpos++] = 0x09;
-		t[rpos++] = 0x00;
-		t[rpos++] = 0x01;
-		t[rpos++] = 0x1d;
-		t[rpos++] = 0x2f;	// /
-		t[rpos++] = 0x55;
-		t[rpos++] = 0x0d;
-		t[rpos++] = 0x78;
-		t[rpos++] = 0x00;
-		t[rpos++] = 0x09;
+		if (wildcard) {
+			const uint8_t regex_wildcard[] = { 0x92, 0x85, 0x00, 0x09, 0x00, 0x01, 0x1d, 0x2f, 0x55, 0x0d, 0x78, 0x00, 0x09 };
+
+			memcpy(t + rpos, regex_wildcard, sizeof(regex_wildcard));
+			rpos += sizeof(regex_wildcard);
+		}
+
 		t[rpos++] = 0x19;
 		t[rpos++] = 0x78;
 		t[rpos++] = 0x00;
-		t[rpos]   = (uint8_t)(rpos - pos_len1);
+		t[rpos]     = (uint8_t)(rpos - pos_len1);
 		t[pos_len1] = (uint8_t)(rpos - pos_len1);
 		rpos++;
 		t[rpos++] = 0x00;
@@ -259,10 +262,10 @@ int main_fctxinject(int argc, char** argv)
 		fctx_write_le4(t, &tpos, 2);	// Private flags
 		for (i = 0; i < 0x20; i++)		// Starting char bits
 			t[tpos++] = 0;
-		fctx_write_le4(t, &tpos, slen);	// Minimum subject length
+		fctx_write_le4(t, &tpos, slen - new_path_regex_start);	// Minimum subject length
 
 		memmove(b + pos_num_regex + 4 + tpos, b + pos_num_regex + 4, len - pos_num_regex - 4);
-		memcpy(b + pos_num_regex +4 , t, tpos);
+		memcpy(b + pos_num_regex + 4 , t, tpos);
 		len += tpos;
 		num_regex++;
 		fctx_write_le4(b, &pos_num_regex, num_regex);
