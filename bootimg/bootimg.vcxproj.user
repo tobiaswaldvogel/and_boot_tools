@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LocalDebuggerCommandArguments>seinject -t mlstrustedsubject -d -P c:\Android\kernel\rootkernel\ramdisk\sepolicy@0644 &gt;d:\pol2.txt</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>seinject -s su_device -t tmpfs -c filesystem -p associate -P C:\Android\kernel\rootkernel\ramdisk\sepolicy@0644 -o d:\testpol</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>

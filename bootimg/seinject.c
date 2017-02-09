@@ -420,11 +420,11 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 	key.specified = AVTAB_ALLOWED;
 
 	/* Check if this permission exist already */
-	ebitmap_for_each_bit(policy->type_attr_map + src->s.value, src_node, src_type) {
+	ebitmap_for_each_bit(policy->type_attr_map + src->s.value - 1, src_node, src_type) {
 		if (!ebitmap_node_get_bit(src_node, src_type))
 			continue;
 
-		ebitmap_for_each_bit(policy->type_attr_map + tgt->s.value, tgt_node, tgt_type) {
+		ebitmap_for_each_bit(policy->type_attr_map + tgt->s.value - 1, tgt_node, tgt_type) {
 			if (!ebitmap_node_get_bit(tgt_node, tgt_type))
 				continue;
 
@@ -438,11 +438,10 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 				continue;
 
 			return seinject_msg(2, "Permission {%s} %s (%s) -> %s (%s) %s already exists",
-				p, s, policy->p_type_val_to_name[src_type - 1],
-				t, policy->p_type_val_to_name[tgt_type - 1], c);
+				p, s, policy->p_type_val_to_name[src_type],
+				t, policy->p_type_val_to_name[tgt_type], c);
 		}
 	}
-
 
 	// See if there is already a rule
 	key.source_type = src->s.value;
