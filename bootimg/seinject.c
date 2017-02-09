@@ -391,6 +391,8 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 	perm_datum_t *perm;
 	avtab_datum_t *av;
 	avtab_key_t key;
+	unsigned int	src_type, tgt_type;
+	ebitmap_node_t	*src_node, *tgt_node;
 
 	src = (type_datum_t*)hashtab_search(policy->p_types.table, s);
 	if (src == NULL)
@@ -414,11 +416,37 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 			return seinject_msg(2, "perm %s does not exist in class %s", p, c);
 	}
 
+	key.target_class = cls->s.value;
+	key.specified = AVTAB_ALLOWED;
+
+	/* Check if this permission exist already */
+	ebitmap_for_each_bit(policy->type_attr_map + src->s.value, src_node, src_type) {
+		if (!ebitmap_node_get_bit(src_node, src_type))
+			continue;
+
+		ebitmap_for_each_bit(policy->type_attr_map + tgt->s.value, tgt_node, tgt_type) {
+			if (!ebitmap_node_get_bit(tgt_node, tgt_type))
+				continue;
+
+			key.source_type = src_type;
+			key.target_type = tgt_type;
+			av = avtab_search(&policy->te_avtab, &key);
+			if (!av)
+				continue;
+
+			if (!(av->data & (1U << (perm->s.value - 1))))
+				continue;
+
+			return seinject_msg(2, "Permission {%s} %s (%s) -> %s (%s) %s already exists",
+				p, s, policy->p_type_val_to_name[src_type - 1],
+				t, policy->p_type_val_to_name[tgt_type - 1], c);
+		}
+	}
+
+
 	// See if there is already a rule
 	key.source_type = src->s.value;
 	key.target_type = tgt->s.value;
-	key.target_class = cls->s.value;
-	key.specified = AVTAB_ALLOWED;
 	av = avtab_search(&policy->te_avtab, &key);
 
 	if (av == NULL) {
