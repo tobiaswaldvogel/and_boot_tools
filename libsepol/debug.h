@@ -58,6 +58,9 @@
 				_sepol_h, __VA_ARGS__);		   \
 		}                                                  \
 	} while(0)
+#else
+void msg_write(sepol_handle_t *handle, int severity, const  char *label, const char *func, const char* format, ...);
+#endif
 
 #define ERR(handle, ...) \
 	msg_write(handle, SEPOL_MSG_ERR, "libsepol", \
@@ -71,6 +74,7 @@
 	msg_write(handle, SEPOL_MSG_WARN, "libsepol", \
 	__FUNCTION__, __VA_ARGS__)
 
+#ifdef DEBUG
 #ifdef __GNUC__
 __attribute__ ((format(printf, 3, 4)))
 #endif
@@ -83,10 +87,5 @@ extern struct sepol_handle sepol_compat_handle;
 hidden_proto(sepol_msg_get_channel)
     hidden_proto(sepol_msg_get_fname)
     hidden_proto(sepol_msg_get_level)
-#else
-void ERR(sepol_handle_t *handle, ...);
-void INFO(sepol_handle_t *handle, ...);
-void WARN(sepol_handle_t *handle, ...);
 #endif
-
 #endif

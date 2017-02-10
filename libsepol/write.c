@@ -237,10 +237,12 @@ static int avtab_write_item(policydb_t * p,
 	}
 
 	if (cur->key.specified & AVTAB_XPERMS) {
-		buf8 = cur->datum.xperms->specified;
-		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
-		if (items != 1)
-			return POLICYDB_ERROR;
+		if (cur->datum.xperms->specified) {
+			buf8 = cur->datum.xperms->specified;
+			items = put_entry(&buf8, sizeof(uint8_t), 1, fp);
+			if (items != 1)
+				return POLICYDB_ERROR;
+		}
 		buf8 = cur->datum.xperms->driver;
 		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
 		if (items != 1)

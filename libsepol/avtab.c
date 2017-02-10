@@ -551,12 +551,19 @@ int avtab_read_item(struct policy_file *fp, uint32_t vers, avtab_t * a,
 			return -1;
 		}
 		xperms.specified = buf8;
-		rc = next_entry(&buf8, fp, sizeof(uint8_t));
-		if (rc < 0) {
-			ERR(fp->handle, "truncated entry");
-			return -1;
+
+		if (xperms.specified != AVTAB_XPERMS_IOCTLFUNCTION &&
+			xperms.specified != AVTAB_XPERMS_IOCTLDRIVER) {
+			xperms.driver = xperms.specified;
+			xperms.specified = 0;
+		} else {
+			rc = next_entry(&buf8, fp, sizeof(uint8_t));
+			if (rc < 0) {
+				ERR(fp->handle, "truncated entry");
+				return -1;
+			}
+			xperms.driver = buf8;
 		}
-		xperms.driver = buf8;
 		rc = next_entry(buf32, fp, sizeof(uint32_t)*8);
 		if (rc < 0) {
 			ERR(fp->handle, "truncated entry");
@@ -607,6 +614,10 @@ int avtab_read(avtab_t * a, struct policy_file *fp, uint32_t vers)
 	}
 
 	for (i = 0; i < nel; i++) {
+		if (i == 722) {
+			rc = 0;
+		}
+
 		rc = avtab_read_item(fp, vers, a, avtab_insertf, NULL);
 		if (rc) {
 			if (rc == SEPOL_ENOMEM)

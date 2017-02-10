@@ -19,42 +19,48 @@
 #include <sepol/policydb/avrule_block.h>
 #include <sepol/policydb/conditional.h>
 #include <sepol/policydb/constraint.h>
+#include <sepol/debug.h>
 
 #ifdef WIN32
 #define strtok_r strtok_s
 #endif
 
-int seinject_quiet = 0;
+int seinject_trace_level = 1;
 
-int seinject_msg(int rc, const char *why, ...)
+void msg_write(sepol_handle_t *handle, int severity, char *label, char *func, char* format, ...)
 {
 	va_list ap;
 
-	if (seinject_quiet != 0)
-		return rc;
+	va_start(ap, format);
 
-	va_start(ap, why);
-	fprintf(stderr,"error: ");
-	vfprintf(stderr, why, ap);
-	fprintf(stderr,"\n");
+	if (seinject_trace_level < severity)
+		return;
+
+	fprintf(stderr, "%s (%s-%s): ",
+		severity == SEPOL_MSG_ERR ? "error" :
+		severity == SEPOL_MSG_WARN ? "warning" : "info",
+		label, func);
+	vfprintf(stderr, format, ap);
+	fprintf(stderr, "\n");
 	va_end(ap);
-	return rc;
 }
 
-
-void seinject_die(int rc, const char *why, ...)
+int seinject_msg(int severity, const char *format, ...)
 {
 	va_list ap;
 
-	if (seinject_quiet != 0)
-		exit(rc);
+	va_start(ap, format);
 
-	va_start(ap, why);
-	fprintf(stderr,"error: ");
-	vfprintf(stderr, why, ap);
-	fprintf(stderr,"\n");
+	if (seinject_trace_level < severity)
+		return severity;
+
+	fprintf(stderr, "%s: ",
+		severity == SEPOL_MSG_ERR ? "error" :
+		severity == SEPOL_MSG_WARN ? "warning" : "info");
+	vfprintf(stderr, format, ap);
+	fprintf(stderr, "\n");
 	va_end(ap);
-	exit(rc);
+	return severity;
 }
 
 void seinject_spec_to_string(uint16_t spec, char *buffer, size_t buflen)
@@ -110,10 +116,6 @@ size_t seinject_perm_to_string(char *buffer, size_t buflen, uint32_t value, clas
 	}
 
 	return bufpos;
-}
-
-void seinject_type_map_to_string(type_datum_t *td, char *buffer, size_t buflen)
-{
 }
 
 size_t seinject_dump_type_bm(char* buffer, size_t buflen, policydb_t *policy, ebitmap_t *bm)
@@ -186,8 +188,10 @@ int seinject_dump_types(policydb_t *policy, char *filter)
 
 	if (filter) {
 		type_datum_t *t = (type_datum_t*)hashtab_search(policy->p_types.table, filter);
-		if (!t)
-			seinject_die(2, "Filter type %s does not exist", filter);
+		if (!t) {
+			seinject_msg(SEPOL_MSG_ERR, "Filter type %s does not exist", filter);
+			return 2;
+		}
 		filter_type = t->s.value;
 	}
 
@@ -266,7 +270,7 @@ int seinject_dump_classes(policydb_t *policy, char *filter)
 	if (filter) {
 		class_datum_t *t = (class_datum_t*)hashtab_search(policy->p_classes.table, filter);
 		if (!t)
-			seinject_die(2, "Filter class %s does not exist", filter);
+			return seinject_msg(SEPOL_MSG_ERR, "Filter class %s does not exist", filter);
 		filter_class = t->s.value;
 	}
 
@@ -322,10 +326,13 @@ int seinject_dump_classes(policydb_t *policy, char *filter)
 	return 0;
 }
 
-void *cmalloc(size_t s) {
+void *cmalloc(size_t s)
+{
 	void *t = malloc(s);
-	if (t == NULL)
-		seinject_die(1, "Out of memory");
+	if (t == NULL) {
+		seinject_msg(SEPOL_MSG_ERR, "Out of memory");
+		exit(1);
+	}
 	return t;
 }
 
@@ -345,10 +352,10 @@ int add_type(policydb_t *policy, char *type, type_datum_t** td_ret)
 
 	name = strdup(type);
 	if (!name)
-		return seinject_msg(1, "Could allocate memor for new type", type);
+		return seinject_msg(SEPOL_MSG_ERR, "Could allocate memor for new type", type);
 
 	if (SEPOL_OK != symtab_insert(policy, SYM_TYPES, name, td, SCOPE_DECL, 1, &value))
-		seinject_die(2, "Failed to insert type into symtab\n");
+		return seinject_msg(SEPOL_MSG_ERR, "Failed to insert type into symtab\n");
 
 	td->s.value = value;
 
@@ -371,21 +378,20 @@ int add_type(policydb_t *policy, char *type, type_datum_t** td_ret)
 	}
 
 	if (policydb_index_decls(0, policy))
-		seinject_die(2, "Failed to index decls\n");
+		return seinject_msg(SEPOL_MSG_ERR, "Failed to index decls\n");
 
 	if (policydb_index_classes(policy))
-		seinject_die(2, "Failed to index classes\n");
+		return seinject_msg(SEPOL_MSG_ERR, "Failed to index classes\n");
 	
 	if (policydb_index_others(NULL, policy, 1))
-		seinject_die(2, "Failed to index others\n");
-
-
+		return seinject_msg(SEPOL_MSG_ERR, "Failed to index others\n");
 
 	*td_ret = td;
 	return 0;
 }
 
-int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
+int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p)
+{
 	type_datum_t *src, *tgt;
 	class_datum_t *cls;
 	perm_datum_t *perm;
@@ -396,24 +402,24 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 
 	src = (type_datum_t*)hashtab_search(policy->p_types.table, s);
 	if (src == NULL)
-		return seinject_msg(2, "source type %s does not exist", s);
+		return seinject_msg(SEPOL_MSG_WARN, "source type %s does not exist", s);
 
 	tgt = (type_datum_t*)hashtab_search(policy->p_types.table, t);
 	if (tgt == NULL)
-		return seinject_msg(2, "target type %s does not exist", t);
+		return seinject_msg(SEPOL_MSG_WARN, "target type %s does not exist", t);
 
 	cls = (class_datum_t*)hashtab_search(policy->p_classes.table, c);
 	if (cls == NULL)
-		return seinject_msg(2,"class %s does not exist", c);
+		return seinject_msg(SEPOL_MSG_WARN, "class %s does not exist", c);
 
 	perm = (perm_datum_t*)hashtab_search(cls->permissions.table, p);
 	if (perm == NULL) {
 		if (cls->comdatum == NULL)
-			return seinject_msg(2, "perm %s does not exist in class %s", p, c);
+			return seinject_msg(SEPOL_MSG_WARN, "perm %s does not exist in class %s", p, c);
 
 		perm = (perm_datum_t*)hashtab_search(cls->comdatum->permissions.table, p);
 		if (perm == NULL)
-			return seinject_msg(2, "perm %s does not exist in class %s", p, c);
+			return seinject_msg(SEPOL_MSG_WARN, "perm %s does not exist in class %s", p, c);
 	}
 
 	key.target_class = cls->s.value;
@@ -428,8 +434,8 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 			if (!ebitmap_node_get_bit(tgt_node, tgt_type))
 				continue;
 
-			key.source_type = src_type;
-			key.target_type = tgt_type;
+			key.source_type = src_type + 1;
+			key.target_type = tgt_type + 1;
 			av = avtab_search(&policy->te_avtab, &key);
 			if (!av)
 				continue;
@@ -437,7 +443,7 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 			if (!(av->data & (1U << (perm->s.value - 1))))
 				continue;
 
-			return seinject_msg(2, "Permission {%s} %s (%s) -> %s (%s) %s already exists",
+			return seinject_msg(SEPOL_MSG_WARN, "Permission {%s} %s (%s) -> %s (%s) %s already exists",
 				p, s, policy->p_type_val_to_name[src_type],
 				t, policy->p_type_val_to_name[tgt_type], c);
 		}
@@ -455,7 +461,7 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 		av->data |= 1U << (perm->s.value - 1);
 		ret = avtab_insert(&policy->te_avtab, &key, av);
 		if (ret)
-			return seinject_msg(1, "Error inserting into avtab");
+			return seinject_msg(SEPOL_MSG_ERR, "Error inserting into avtab");
 	}
 
 	av->data |= 1U << (perm->s.value - 1);
@@ -463,7 +469,8 @@ int add_rule(policydb_t *policy, char *s, char *t, char *c, char *p) {
 	return 0;
 }
 
-int add_genfs(policydb_t *policy, char *fs, char *p, char *c) {
+int add_genfs(policydb_t *policy, char *fs, char *p, char *c)
+{
 	type_datum_t		*tgt;
 	genfs_t				*genfs;
 	ocontext_t			*octx;
@@ -474,7 +481,7 @@ int add_genfs(policydb_t *policy, char *fs, char *p, char *c) {
 
 	tgt = (type_datum_t*)hashtab_search(policy->p_types.table, c);
 	if (tgt == NULL)
-		return seinject_msg(2, "target type %s does not exist", c);
+		return seinject_msg(SEPOL_MSG_WARN, "target type %s does not exist", c);
 
 	for (genfs = policy->genfs; genfs; genfs = genfs->next) {
 		if (strcmp(genfs->fstype, fs))
@@ -525,19 +532,19 @@ int add_transition(policydb_t *policy, char *srcS, char *origS, char *tgtS, char
 
 	src = hashtab_search(policy->p_types.table, srcS);
 	if (src == NULL)
-		return seinject_msg(1, "source type %s does not exist\n", srcS);
+		return seinject_msg(SEPOL_MSG_WARN, "source type %s does not exist\n", srcS);
 
 	tgt = hashtab_search(policy->p_types.table, tgtS);
 	if (tgt == NULL)
-		return seinject_msg(1, "target type %s does not exist\n", tgtS);
+		return seinject_msg(SEPOL_MSG_WARN, "target type %s does not exist\n", tgtS);
 
 	cls = hashtab_search(policy->p_classes.table, c);
 	if (cls == NULL)
-		return seinject_msg(1, "class %s does not exist\n", c);
+		return seinject_msg(SEPOL_MSG_WARN, "class %s does not exist\n", c);
 
 	orig = hashtab_search(policy->p_types.table, origS);
 	if (cls == NULL)
-		return seinject_msg(1, "class %s does not exist\n", origS);
+		return seinject_msg(SEPOL_MSG_WARN, "class %s does not exist\n", origS);
 
 	key.source_type = src->s.value;
 	key.target_type = orig->s.value;
@@ -546,38 +553,39 @@ int add_transition(policydb_t *policy, char *srcS, char *origS, char *tgtS, char
 	av = avtab_search(&policy->te_avtab, &key);
 
 	if (av)
-		return seinject_msg(1, "Warning, rule already defined! Won't override.\n"
-								"Previous value = %d, wanted value = %d\n", av->data, tgt->s.value);
+		return seinject_msg(SEPOL_MSG_WARN, "Warning, rule already defined! Won't override.\n"
+			"Previous value = %d, wanted value = %d\n", av->data, tgt->s.value);
 
 	av = cmalloc(sizeof(*av));
 	av->data = tgt->s.value;
 	int ret = avtab_insert(&policy->te_avtab, &key, av);
 	if (ret)
-		return seinject_msg(1, "Error inserting into avtab\n");
+		return seinject_msg(SEPOL_MSG_ERR, "Error inserting into avtab\n");
 
 	return 0;
 }
 
-int add_attr(policydb_t *policy, char *type, char *attr) {
+int add_attr(policydb_t *policy, char *type, char *attr)
+{
 	type_datum_t		*td, *ad;
 	unsigned int		i;
 
 	td = hashtab_search(policy->p_types.table, type);
 	if (!td)
-		return seinject_msg(1, "type %s does not exist\n", type);
+		return seinject_msg(SEPOL_MSG_WARN, "type %s does not exist\n", type);
 
 	ad = hashtab_search(policy->p_types.table, attr);
 	if (!ad)
-		return seinject_msg(1, "attribute %s does not exist\n", attr);
+		return seinject_msg(SEPOL_MSG_WARN, "attribute %s does not exist\n", attr);
 
 	if (ad->flavor != TYPE_ATTRIB)
-		return seinject_msg(1, "%s is not an attribute", type);
+		return seinject_msg(SEPOL_MSG_ERR, "%s is not an attribute", type);
 
 	if (ebitmap_set_bit(policy->type_attr_map + td->s.value - 1, ad->s.value - 1, 1))
-		return seinject_msg(1, "error setting attibute %s for type: %s", attr, type);
+		return seinject_msg(SEPOL_MSG_ERR, "error setting attibute %s for type: %s", attr, type);
 
 	if (ebitmap_set_bit(policy->attr_type_map + ad->s.value - 1, td->s.value - 1, 1))
-		return seinject_msg(1, "error setting attibute %s for type: %s", attr, type);
+		return seinject_msg(SEPOL_MSG_ERR, "error setting attibute %s for type: %s", attr, type);
 
 	/* Update constraints */
 	for (i = 0; i < policy->p_classes.nprim; i++) {
@@ -600,21 +608,24 @@ int remove_mls_contraints(policydb_t *policy, char *clazz) {
 
 	cd = hashtab_search(policy->p_classes.table, clazz);
 	if (!cd)
-		return seinject_msg(1, "class %s does not exist\n");
+		return seinject_msg(SEPOL_MSG_WARN, "class %s does not exist\n");
 
 	cd->constraints = 0;
 	return 0;
 }
 
-int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
+int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf)
+{
 	FILE*	f;
 	size_t	size;
 	void *data;
 	int ret;
 
 	f = fopen(filename, "rb");
-	if (f == NULL)
-		seinject_die(1, "Can't open '%s':  %s", filename, strerror(errno));
+	if (f == NULL) {
+		seinject_msg(SEPOL_MSG_ERR, "Can't open '%s':  %s", filename, strerror(errno));
+		exit(1);
+	}
 
 	fseek(f, 0, SEEK_END);
 	size = ftell(f);
@@ -623,13 +634,15 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	data = malloc(size);
 	if (data == NULL) {
 		fclose(f);
-		seinject_die(1, "Can't allocate memory");
+		seinject_msg(SEPOL_MSG_ERR, "Can't allocate memory");
+		exit(1);
 	}
 
 	if (fread(data, 1, size, f) != size) {
 		free(data);
 		fclose(f);
-		seinject_die(1, "Can't read policy file '%s':  %s", filename, strerror(errno));
+		seinject_msg(SEPOL_MSG_ERR, "Can't read policy file '%s':  %s", filename, strerror(errno));
+		exit(1);
 	}
 
 	policy_file_init(pf);
@@ -639,14 +652,16 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	if (policydb_init(policydb)) {
 		free(data);
 		fclose(f);
-		seinject_die(1, "policydb_init: Out of memory!");
+		seinject_msg(SEPOL_MSG_ERR, "policydb_init: Out of memory!");
+		exit(1);
 	}
 
 	ret = policydb_read(policydb, pf, 1);
 	if (ret) {
 		free(data);
 		fclose(f);
-		seinject_die(1, "error(s) encountered while parsing configuration");
+		seinject_msg(SEPOL_MSG_ERR, "error(s) encountered while parsing configuration");
+		exit(1);
 	}
 
 	free(data);
@@ -654,7 +669,8 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	return 0;
 }
 
-int load_policy_into_kernel(policydb_t *policydb) {
+int load_policy_into_kernel(policydb_t *policydb)
+{
 	FILE	*f;
 	char *filename = "/sys/fs/selinux/load";
 	int ret;
@@ -665,29 +681,33 @@ int load_policy_into_kernel(policydb_t *policydb) {
 
 	// based on libselinux security_load_policy()
 	f = fopen(filename, "wb");
-	if (f == NULL)
-		seinject_die(1, "Can't open '%s':  %s", filename, strerror(errno));
+	if (f == NULL) {
+		seinject_msg(SEPOL_MSG_ERR, "Can't open '%s':  %s", filename, strerror(errno));
+		exit(1);
+	}
 
 	ret = fwrite(data, 1, len, f);
 	fclose(f);
 
-	if (ret < 0)
-		seinject_die(1, "Could not write policy to %s", filename);
+	if (ret < 0) {
+		seinject_msg(SEPOL_MSG_ERR, "Could not write policy to %s", filename);
+		exit(1);
+	}
 
 	return 0;
 }
 
-int main_seinject(int argc, char **argv) {
-	char		*policy = NULL, *source = NULL, *target = NULL, *clazz = NULL, *perm = NULL, *fcon = 0;
-	char		*mls = 0, *perm_token = NULL, *perm_saveptr = NULL, *outfile = NULL;
-	char		*type = 0, *genfs = 0, *attr = 0;
-	policydb_t	policydb;
-	struct policy_file pf, outpf;
-	sidtab_t	sidtab;
-	int			ret_add_rule;
-	int			load = 0, dump_types = 0, dump_classes = 0;
-	FILE *fp;
-	int i, permissive_value = 0;
+int main_seinject(int argc, char **argv)
+{
+	char				*policy = NULL, *source = NULL, *target = NULL, *clazz = NULL, *perm = NULL, *fcon = 0;
+	char				*mls = 0, *perm_token = NULL, *perm_saveptr = NULL, *outfile = NULL;
+	char				*type = 0, *genfs = 0, *attr = 0;
+	policydb_t			policydb;
+	struct policy_file	pf, outpf;
+	sidtab_t			sidtab;
+	int					load = 0, dump_types = 0, dump_classes = 0;
+	FILE				*fp;
+	int					rc, i, permissive_value = 0;
 
 	for (i=1; i<argc; i++) {
 		if (argv[i][0] == '-') {
@@ -697,25 +717,43 @@ int main_seinject(int argc, char **argv) {
 				attr = argv[i];
 				continue;
 			}
-			if (argv[i][1] == 's') {
-				i++;
-				source = argv[i];
-				continue;
-			}
-			if (argv[i][1] == 't') {
-				i++;
-				target = argv[i];
-				continue;
-			}
 			if (argv[i][1] == 'c') {
 				i++;
 				clazz = argv[i];
 				continue;
 			}
-
+			if (argv[i][1] == 'd') {
+				if (argv[i][2] == 't') {
+					dump_types = 1;
+					continue;
+				}
+				else if (argv[i][2] == 'c') {
+					dump_classes = 1;
+					continue;
+				}
+			}
 			if (argv[i][1] == 'f') {
 				i++;
 				fcon = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 'g') {
+				i++;
+				genfs = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 'l') {
+				load = 1;
+				continue;
+			}
+			if (argv[i][1] == 'M') {
+				i++;
+				mls = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 'o') {
+				i++;
+				outfile = argv[i];
 				continue;
 			}
 			if (argv[i][1] == 'p') {
@@ -728,9 +766,19 @@ int main_seinject(int argc, char **argv) {
 				policy = argv[i];
 				continue;
 			}
-			if (argv[i][1] == 'o') {
+			if (argv[i][1] == 's') {
 				i++;
-				outfile = argv[i];
+				source = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 't') {
+				i++;
+				target = argv[i];
+				continue;
+			}
+			if (argv[i][1] == 'w') {
+				i++;
+				seinject_trace_level = atoi(argv[i]);
 				continue;
 			}
 			if (argv[i][1] == 'Z') {
@@ -745,39 +793,13 @@ int main_seinject(int argc, char **argv) {
 				permissive_value = 0;
 				continue;
 			}
-			if (argv[i][1] == 'g') {
-				i++;
-				genfs = argv[i];
-				continue;
-			}
-			if (argv[i][1] == 'M') {
-				i++;
-				mls = argv[i];
-				continue;
-			}
-			if (argv[i][1] == 'l') {
-				load = 1;
-				continue;
-			}
-			if (argv[i][1] == 'q') {
-				seinject_quiet = 1;
-				continue;
-			}
-			if (argv[i][1] == 'd') {
-				if (argv[i][2] == 't') {
-					dump_types = 1;
-					continue;
-				}
-				else if (argv[i][2] == 'c') {
-					dump_classes = 1;
-					continue;
-				}
-			}
 			break;
 		}
 	}
 
 	if (i < argc || argc == 1 || ((!source || !target || !clazz || !perm) && !attr && !fcon && !type && !mls && !dump_types && !dump_classes && (!genfs || !target))) {
+		fprintf(stderr, "   -l\n");
+		fprintf(stderr, "    Set trace level 0-3 (default 1)\n\n");
 		fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
 		fprintf(stderr, "    Add AV rule\n\n");
 		fprintf(stderr, "%s -Z permissive_type [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
@@ -803,8 +825,10 @@ int main_seinject(int argc, char **argv) {
 	sepol_set_policydb(&policydb);
 	sepol_set_sidtab(&sidtab);
 
-	if (load_policy(policy, &policydb, &pf))
-		seinject_die(1, "Could not load policy");
+	if (load_policy(policy, &policydb, &pf)) {
+		seinject_msg(SEPOL_MSG_ERR, "Could not load policy");
+		exit(1);
+	}
 
 	if (policydb_load_isids(&policydb, &sidtab))
 		return 1;
@@ -823,72 +847,84 @@ int main_seinject(int argc, char **argv) {
 		/* Set domain permissive / non-permissive */
 		type_datum_t *td = hashtab_search(policydb.p_types.table, type);
 
-		if (!td)
-			if (SEPOL_OK != add_type(&policydb, type, &td))
-				seinject_die(2, "Could not create type %s", type);
+		if (!td) {
+			rc = add_type(&policydb, type, &td);
+			if (SEPOL_OK != rc) {
+				seinject_msg(rc, "Could not create type %s", type);
+				exit(rc);
+			}
+		}
 
-		if (ebitmap_set_bit(&policydb.permissive_map, td->s.value, permissive_value))
-			seinject_die(1, "Could not set bit in permissive map");
-
+		if (ebitmap_set_bit(&policydb.permissive_map, td->s.value, permissive_value)) {
+			seinject_msg(SEPOL_MSG_ERR, "Could not set bit in permissive map");
+			exit(2);
+		}
 	} else if (genfs) {
 		/* Add genfs entry */
-		if (add_genfs(&policydb,genfs, perm, target))
-			seinject_die(1, "Could not add genfs rule");
+		rc = add_genfs(&policydb, genfs, perm, target);
+		if (SEPOL_OK != rc) {
+			seinject_msg(rc, "Could not add genfs rule");
+			exit(rc);
+		}
 
 	} else if (mls) {
 		remove_mls_contraints(&policydb, mls);
 
 	} else if (fcon) {
-		if (add_transition(&policydb, source, fcon, target, clazz))
-			seinject_die(1, "Could not add file transition rule");
+		rc = add_transition(&policydb, source, fcon, target, clazz);
+		if (SEPOL_OK != rc) {
+			seinject_msg(rc, "Could not add file transition rule");
+			exit(rc);
+		}
 
 	} else if (attr) {
-		if (add_attr(&policydb, source, attr))
-			seinject_die(1, "Could not add attr to type");
+		rc = add_attr(&policydb, source, attr);
+		if (SEPOL_OK != rc) {
+			seinject_msg(rc, "Could not add attr to type");
+			exit(rc);
+		}
 
 	} else {
+		int	rc_total = SEPOL_OK;
+
 		perm_token = strtok_r(perm, ",", &perm_saveptr);
 		while (perm_token) {
-			ret_add_rule = add_rule(&policydb, source, target, clazz, perm_token);
-			if (ret_add_rule)
-				seinject_die(ret_add_rule, "Could not add rule for perm: %s", perm_token);
-
+			rc = add_rule(&policydb, source, target, clazz, perm_token);
+			if (rc > rc_total)
+				rc_total = rc;
 			perm_token = strtok_r(NULL, ",", &perm_saveptr);
 		}
+
+		if (SEPOL_OK != rc_total)
+			exit(rc);
 	}
 
 	if (outfile) {
 		fp = fopen(outfile, "wb");
-		if (!fp)
-			seinject_die(1, "Could not open outfile");
+		if (!fp) {
+			seinject_msg(SEPOL_MSG_ERR, "Could not open outfile");
+			exit(1);
+		}
 
 		policy_file_init(&outpf);
 		outpf.type = PF_USE_STDIO;
 		outpf.fp = fp;
 
-		if (policydb_write(&policydb, &outpf))
-			seinject_die(1, "Could not write policy");
+		if (policydb_write(&policydb, &outpf)) {
+			seinject_msg(SEPOL_MSG_ERR, "Could not write policy");
+			exit(1);
+		}
 
 		fclose(fp);
 	}
 
 	if (load) {
-		if (load_policy_into_kernel(&policydb))
-			seinject_die(1, "Could not load new policy into kernel");
+		if (load_policy_into_kernel(&policydb)) {
+			seinject_msg(SEPOL_MSG_ERR, "Could not load new policy into kernel");
+			exit(1);
+		}
 	}
 
 	policydb_destroy(&policydb);
 	return 0;
-}
-
-void ERR(sepol_handle_t *handle, ...)
-{
-}
-
-void INFO(sepol_handle_t *handle, ...)
-{
-}
-
-void WARN(sepol_handle_t *handle, ...)
-{
 }
