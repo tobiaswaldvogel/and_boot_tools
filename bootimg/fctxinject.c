@@ -32,7 +32,7 @@ void fctxinject_info(int verbose, const char *info, ...)
 }
 
 int fctxinject_usage() {
-	fprintf(stderr, "Usage: fctxinject -i input file -o output file -p path -w -d context [ -d (dump) ] [ -q (quiet) ]\n\n");
+	fprintf(stderr, "Usage: fctxinject -i input file -o output file -p path -w -c context [ -v (verbodes) ] [ -q (quiet) ]\n\n");
 	return 200;
 }
 
@@ -69,7 +69,7 @@ int main_fctxinject(int argc, char** argv)
 	size_t		regex_start, regex_new_start = 0;
 	uint32_t	pcrereglen, pcrestudylen;
 
-	uint8_t	t[256], *b = 0;
+	uint8_t	t[1024], *b = 0;
 
 	argc--;
 	argv++;

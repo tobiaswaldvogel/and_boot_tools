@@ -326,6 +326,37 @@ int seinject_dump_classes(policydb_t *policy, char *filter)
 	return 0;
 }
 
+int seinject_dump_genfs(policydb_t *policy, char *filter)
+{
+	uint32_t		filter_type;
+	genfs_t			*cur;
+
+	if (filter) {
+		type_datum_t *t = (type_datum_t*)hashtab_search(policy->p_types.table, filter);
+		if (!t) {
+			seinject_msg(SEPOL_MSG_ERR, "Filter type %s does not exist", filter);
+			return 2;
+		}
+		filter_type = t->s.value;
+	}
+
+	for (cur = policy->genfs; cur; cur = cur->next) {
+		ocontext_t		*octx;
+
+		for (octx = cur->head; octx; octx = octx->next) {
+			uint32_t	t = octx->context[0].type;
+
+			if (filter && filter_type != !t)
+				continue;
+
+			printf("[GENFS] %s %s {%s}\n", cur->fstype, octx->u.name,
+				policy->p_type_val_to_name[t - 1]);
+		}
+	}
+	return 0;
+}
+
+
 void *cmalloc(size_t s)
 {
 	void *t = malloc(s);
@@ -705,7 +736,7 @@ int main_seinject(int argc, char **argv)
 	policydb_t			policydb;
 	struct policy_file	pf, outpf;
 	sidtab_t			sidtab;
-	int					load = 0, dump_types = 0, dump_classes = 0;
+	int					load = 0, dump_types = 0, dump_classes = 0, dump_genfs = 0;
 	FILE				*fp;
 	int					rc, i, permissive_value = 0;
 
@@ -729,6 +760,10 @@ int main_seinject(int argc, char **argv)
 				}
 				else if (argv[i][2] == 'c') {
 					dump_classes = 1;
+					continue;
+				}
+				else if (argv[i][2] == 'g') {
+					dump_genfs = 1;
 					continue;
 				}
 			}
@@ -797,7 +832,7 @@ int main_seinject(int argc, char **argv)
 		}
 	}
 
-	if (i < argc || argc == 1 || ((!source || !target || !clazz || !perm) && !attr && !fcon && !type && !mls && !dump_types && !dump_classes && (!genfs || !target))) {
+	if (i < argc || argc == 1 || ((!source || !target || !clazz || !perm) && !attr && !fcon && !type && !mls && !dump_types && !dump_classes && !dump_genfs &&(!genfs || !target))) {
 		fprintf(stderr, "   -l\n");
 		fprintf(stderr, "    Set trace level 0-3 (default 1)\n\n");
 		fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] [-P <policy file>] [-o <output file>] [-l|--load]\n", argv[0]);
@@ -833,12 +868,15 @@ int main_seinject(int argc, char **argv)
 	if (policydb_load_isids(&policydb, &sidtab))
 		return 1;
 
-	if (dump_types || dump_classes) {
+	if (dump_types || dump_classes || dump_genfs) {
 		if (dump_classes)
 			seinject_dump_classes(&policydb, clazz);
 
 		if (dump_types)
 			seinject_dump_types(&policydb, target);
+
+		if (dump_genfs)
+			seinject_dump_genfs(&policydb, target);
 
 		return 0;
 	}
